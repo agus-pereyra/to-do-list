@@ -1,31 +1,11 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
+
+import tasks
+from tasks import Task, TaskNew, TaskUpdate
 
 app = FastAPI()
-
-# ========== TASKS ==============
-class TaskNew(BaseModel):
-    title: str
-    done: bool = False
-
-class Task(TaskNew):
-    id: int
-
-class TaskUpdate(BaseModel):
-    title: str | None = None
-    done : bool | None = None
-
-# in-memory task store
-TASKS = {
-    0: Task(id=0, title='Buy Milk', done=False),
-    1: Task(id=1, title='Make API', done=True),
-    2: Task(id=2, title='Task Example Nº3', done=False),
-    }
-next_id = 3 # next id to assign
-
-# ======= API ENDPOINTS ================
 
 # --------- HANDLERS -------------
 @app.exception_handler(HTTPException)
@@ -60,52 +40,45 @@ def get_health():
 @app.get('/tasks')
 def list_tasks(done: bool|None = None, search: str|None = None):
     '''List tasks with optional query parameters (filter by task status and search by title)'''
-    tasks = list(TASKS.values())
+    result = list(tasks.TASKS.values())
     if done is not None:
-        tasks = [t for t in tasks if t.done == done]
+        result = [t for t in result if t.done == done]
     if search is not None:
-        tasks = [t for t in tasks if search.lower() in t.title.lower()]
-    return tasks
+        result = [t for t in result if search.lower() in t.title.lower()]
+    return result
 
 @app.get('/tasks/{id}') # 200: OK (default)
 def get_task(id: int):
-    task = TASKS.get(id)
+    task = tasks.TASKS.get(id)
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task {id} not found") # Error 404
     return task
 
 @app.get('/stats')
 def get_stats():
-    total = len(TASKS)
-    done = sum(1 for t in TASKS.values() if t.done)
+    total = len(tasks.TASKS)
+    done = sum(1 for t in tasks.TASKS.values() if t.done)
     return {'total' : total, 'done' : done, 'open' : total - done}
 
 # ----------- POST --------------
 @app.post('/tasks', status_code=201) # 201: Created
 def create_task(form: TaskNew):
-    global next_id # use global variable
-    new_task = Task(id=next_id, title=form.title, done=form.done)
-    TASKS[next_id] = new_task
-    next_id += 1
+    new_task = Task(id=tasks.next_id, title=form.title, done=form.done)
+    tasks.TASKS[tasks.next_id] = new_task
+    tasks.next_id += 1 # module attribute -> no "global" needed here
     return new_task
 
 @app.post('/reset', status_code=204) # 204: No Content
 def reset_tasks():
-    '''Reset de TASKS to the initial state (3 examples)'''
-    global TASKS, next_id
-    TASKS = {
-    0: Task(id=0, title='Buy Milk', done=False),
-    1: Task(id=1, title='Make API', done=True),
-    2: Task(id=2, title='Task Example Nº3', done=False),
-    }
-    next_id = 3
+    '''Reset the TASKS store to the initial state (3 examples)'''
+    tasks.reset()
 
 # ----------- PUT --------------
 @app.put('/tasks/{id}')
 def modify_task(id: int, form: TaskUpdate): # 200: OK (default)
     if form.title is None and form.done is None:
         raise HTTPException(status_code=400, detail='Empty or invalid body') # 400: Bad Request
-    task = TASKS.get(id)
+    task = tasks.TASKS.get(id)
     if task is None:
         raise HTTPException(status_code=404, detail='Unknown task ID') # 404: Not Found
     if form.title is not None:
@@ -117,6 +90,6 @@ def modify_task(id: int, form: TaskUpdate): # 200: OK (default)
 # ------- DELETE --------------
 @app.delete('/tasks/{id}', status_code=204) # 204: No Content
 def delete_task(id: int):
-    if id not in TASKS:
+    if id not in tasks.TASKS:
         raise HTTPException(status_code=404, detail='Unknown task ID') # 404: Not Found
-    TASKS.pop(id)
+    tasks.TASKS.pop(id)
