@@ -25,7 +25,7 @@ TASKS = {
     }
 next_id = 3 # next id to assign
 
-# =========== API ================
+# ======= API ENDPOINTS ================
 
 # --------- HANDLERS -------------
 @app.exception_handler(HTTPException)
@@ -58,8 +58,14 @@ def get_health():
     return {'status': 'ok'}
 
 @app.get('/tasks')
-def list_tasks():
-    return list(TASKS.values())
+def list_tasks(done: bool|None = None, search: str|None = None):
+    '''List tasks with optional query parameters (filter by task status and search by title)'''
+    tasks = list(TASKS.values())
+    if done is not None:
+        tasks = [t for t in tasks if t.done == done]
+    if search is not None:
+        tasks = [t for t in tasks if search.lower() in t.title.lower()]
+    return tasks
 
 @app.get('/tasks/{id}') # 200: OK (default)
 def get_task(id: int):
@@ -68,14 +74,31 @@ def get_task(id: int):
         raise HTTPException(status_code=404, detail=f"Task {id} not found") # Error 404
     return task
 
+@app.get('/stats')
+def get_stats():
+    total = len(TASKS)
+    done = sum(1 for t in TASKS.values() if t.done)
+    return {'total' : total, 'done' : done, 'open' : total - done}
+
 # ----------- POST --------------
 @app.post('/tasks', status_code=201) # 201: Created
 def create_task(form: TaskNew):
-    global next_id
+    global next_id # use global variable
     new_task = Task(id=next_id, title=form.title, done=form.done)
     TASKS[next_id] = new_task
     next_id += 1
     return new_task
+
+@app.post('/reset', status_code=204) # 204: No Content
+def reset_tasks():
+    '''Reset de TASKS to the initial state (3 examples)'''
+    global TASKS, next_id
+    TASKS = {
+    0: Task(id=0, title='Buy Milk', done=False),
+    1: Task(id=1, title='Make API', done=True),
+    2: Task(id=2, title='Task Example Nº3', done=False),
+    }
+    next_id = 3
 
 # ----------- PUT --------------
 @app.put('/tasks/{id}')
