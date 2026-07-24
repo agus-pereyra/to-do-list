@@ -64,6 +64,11 @@ def get_one(id: int) -> Task:
     row = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     return Task(**dict(row)) if row else None
 
+def get_stats() -> dict[str | int]:
+    total = db.execute('SELECT COUNT(*) from tasks').fetchone()[0]
+    done = db.execute('SELECT COUNT(*) from tasks WHERE done = ?', (1,)).fetchone()[0]
+    return {'total' : total, 'done' : done, 'open' : total - done}
+
 # --------- DB (write) -----------
 def insert(title: str, done: bool) -> Task:
     cur = db.execute('INSERT INTO tasks (title, done) VALUES (?, ?)', (title, done))

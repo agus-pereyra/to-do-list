@@ -58,9 +58,7 @@ def get_task(id: int):
 
 @app.get('/stats')
 def get_stats():
-    total = len(tasks.TASKS)
-    done = sum(1 for t in tasks.TASKS.values() if t.done)
-    return {'total' : total, 'done' : done, 'open' : total - done}
+    return tasks.get_stats()
 
 # ----------- POST --------------
 @app.post('/tasks', status_code=201) # 201: Created
@@ -69,7 +67,7 @@ def create_task(form: TaskNew):
 
 @app.post('/reset', status_code=204) # 204: No Content
 def reset_tasks():
-    '''Reset the TASKS store to the initial state (3 examples)'''
+    '''Reset the database to the initial state (3 examples)'''
     tasks.reset()
 
 # ----------- PUT --------------

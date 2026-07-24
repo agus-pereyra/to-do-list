@@ -11,3 +11,6 @@ wheels/
 
 # PDF
 *.pdf
+
+# Database
+tasks.db*
