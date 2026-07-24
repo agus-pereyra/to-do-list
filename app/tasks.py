@@ -1,9 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from db import db
 
 # --------- TASK CLASSES -------------
 class TaskNew(BaseModel):
-    title: str
+    title: str = Field(min_length=1)
     done: bool = False
 
 class Task(TaskNew):
@@ -14,7 +14,7 @@ class TaskUpdate(BaseModel):
     done : bool | None = None
 
 
-# --------- DB (initialize) -----------
+# --------- DB (init) -----------
 EXAMPLES = [
     ('Buy Milk', False),
     ('Make API', True),
@@ -23,7 +23,7 @@ EXAMPLES = [
 
 def seed():
     '''Insert example tasks'''
-    db.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", EXAMPLES) # runs one per tuple ('title', 'done')
+    db.executemany('INSERT INTO tasks (title, done) VALUES (?, ?)', EXAMPLES) # runs one per tuple ('title', 'done')
     db.commit()
 
 def reset():
@@ -33,33 +33,39 @@ def reset():
 
 def seed_if_empty():
     '''Insert example tasks if the db is empty'''
-    count = db.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+    count = db.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
     if count == 0:
         seed()
 
-# --------- DB (manage) -----------
+# --------- DB (read) -----------
 def get_all(done: bool|None = None, search: str|None = None) -> list[Task]:
     '''
     Generates the query string to get the (filtered) rows of the db.
     "SELECT * FROM tasks WHERE done = ? AND title LIKE ?"
     Returns the list of Task objects
     '''
-    sql = "SELECT * FROM tasks"
+    sql = 'SELECT * FROM tasks'
     clauses, params = [], []
 
     if done is not None:
-        clauses.append("done = ?")
+        clauses.append('done = ?')
         params.append(done)
     if search is not None:
-        clauses.append("title LIKE ?")
-        params.append(f"%{search}%") # contains "search" in title
+        clauses.append('title LIKE ?')
+        params.append(f'%{search}%') # contains "search" in title
 
     if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
+        sql += ' WHERE ' + ' AND '.join(clauses)
 
     rows = db.execute(sql, params).fetchall()
     return [Task(**dict(row)) for row in rows]
 
-def get_one(id: int):
+def get_one(id: int) -> Task:
     row = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     return Task(**dict(row)) if row else None
+
+# --------- DB (write) -----------
+def insert(title: str, done: bool) -> Task:
+    cur = db.execute('INSERT INTO tasks (title, done) VALUES (?, ?)', (title, done))
+    db.commit()
+    return Task(id=cur.lastrowid, title=title, done=done)

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-
+import sqlite3
 import tasks
 from tasks import Task, TaskNew, TaskUpdate
 
@@ -27,6 +27,11 @@ def validation_handler(request: Request, exc: RequestValidationError):
         status_code=400,
         content={"error": f"{field}: {first['msg']}"},
     )
+
+@app.exception_handler(sqlite3.Error)
+def db_handler(request: Request, exc: sqlite3.Error):
+    '''Handler for database errors'''
+    return JSONResponse(status_code=500, content={"error": "Database error"})
 
 # ----------- GET --------------
 @app.get('/') # 200: OK (default)
@@ -60,10 +65,7 @@ def get_stats():
 # ----------- POST --------------
 @app.post('/tasks', status_code=201) # 201: Created
 def create_task(form: TaskNew):
-    new_task = Task(id=tasks.next_id, title=form.title, done=form.done)
-    tasks.TASKS[tasks.next_id] = new_task
-    tasks.next_id += 1 # module attribute -> no "global" needed here
-    return new_task
+    return tasks.insert(form.title, form.done)
 
 @app.post('/reset', status_code=204) # 204: No Content
 def reset_tasks():
