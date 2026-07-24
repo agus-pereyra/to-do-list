@@ -7,6 +7,8 @@ from tasks import Task, TaskNew, TaskUpdate
 
 app = FastAPI()
 
+tasks.seed_if_empty()
+
 # --------- HANDLERS -------------
 @app.exception_handler(HTTPException)
 def http_handler(request: Request, exc: HTTPException):
