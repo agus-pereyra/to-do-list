@@ -69,3 +69,24 @@ def insert(title: str, done: bool) -> Task:
     cur = db.execute('INSERT INTO tasks (title, done) VALUES (?, ?)', (title, done))
     db.commit()
     return Task(id=cur.lastrowid, title=title, done=done)
+
+def update(id: int, title: str|None = None, done: bool|None = None):
+    fields, params = [], []
+    if title is not None:
+        fields.append('title = ?')
+        params.append(title)
+    if done is not None:
+        fields.append('done = ?')
+        params.append(done)
+    if not fields:
+        return get_one(id)
+
+    params.append(id)
+    cur = db.execute(f'UPDATE tasks SET {', '.join(fields)} WHERE id = ?', params)
+    db.commit()
+    return get_one(id) if cur.rowcount else None
+
+def delete(id: int):
+    cur = db.execute('DELETE from tasks WHERE id = ?', (id,))
+    db.commit()
+    return cur.rowcount != 0

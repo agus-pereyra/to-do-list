@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import sqlite3
 import tasks
-from tasks import Task, TaskNew, TaskUpdate
+from tasks import TaskNew, TaskUpdate
 
 app = FastAPI()
 
@@ -77,18 +77,13 @@ def reset_tasks():
 def modify_task(id: int, form: TaskUpdate): # 200: OK (default)
     if form.title is None and form.done is None:
         raise HTTPException(status_code=400, detail='Empty or invalid body') # 400: Bad Request
-    task = tasks.TASKS.get(id)
+    task = tasks.update(id, form.title, form.done)
     if task is None:
         raise HTTPException(status_code=404, detail='Unknown task ID') # 404: Not Found
-    if form.title is not None:
-        task.title = form.title
-    if form.done is not None:
-        task.done = form.done
     return task
 
 # ------- DELETE --------------
 @app.delete('/tasks/{id}', status_code=204) # 204: No Content
 def delete_task(id: int):
-    if id not in tasks.TASKS:
+    if not tasks.delete(id):
         raise HTTPException(status_code=404, detail='Unknown task ID') # 404: Not Found
-    tasks.TASKS.pop(id)

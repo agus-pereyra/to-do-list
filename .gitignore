@@ -11,6 +11,3 @@ wheels/
 
 # PDF
 *.pdf
-
-# SQLite
-*.db
