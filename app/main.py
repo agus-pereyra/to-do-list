@@ -42,16 +42,11 @@ def get_health():
 @app.get('/tasks')
 def list_tasks(done: bool|None = None, search: str|None = None):
     '''List tasks with optional query parameters (filter by task status and search by title)'''
-    result = list(tasks.TASKS.values())
-    if done is not None:
-        result = [t for t in result if t.done == done]
-    if search is not None:
-        result = [t for t in result if search.lower() in t.title.lower()]
-    return result
+    return tasks.get_all(done, search)
 
 @app.get('/tasks/{id}') # 200: OK (default)
 def get_task(id: int):
-    task = tasks.TASKS.get(id)
+    task = tasks.get_one(id)
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task {id} not found") # Error 404
     return task
