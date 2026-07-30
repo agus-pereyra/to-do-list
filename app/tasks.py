@@ -23,7 +23,8 @@ EXAMPLES = [
 
 def seed():
     '''Insert example tasks'''
-    db.executemany('INSERT INTO tasks (title, done) VALUES (?, ?)', EXAMPLES) # runs one per tuple ('title', 'done')
+    with db.cursor() as cur:
+        cur.executemany('INSERT INTO tasks (title, done) VALUES (%s, %s)', EXAMPLES) # runs one per tuple ('title', 'done')
     db.commit()
 
 def reset():
@@ -33,7 +34,7 @@ def reset():
 
 def seed_if_empty():
     '''Insert example tasks if the db is empty'''
-    count = db.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
+    count = db.execute('SELECT COUNT(*) FROM tasks').fetchone()['count']
     if count == 0:
         seed()
 
@@ -41,17 +42,17 @@ def seed_if_empty():
 def get_all(done: bool|None = None, search: str|None = None) -> list[Task]:
     '''
     Generates the query string to get the (filtered) rows of the db.
-    "SELECT * FROM tasks WHERE done = ? AND title LIKE ?"
+    "SELECT * FROM tasks WHERE done = %s AND title ILIKE %s"
     Returns the list of Task objects
     '''
     sql = 'SELECT * FROM tasks'
     clauses, params = [], []
 
     if done is not None:
-        clauses.append('done = ?')
+        clauses.append('done = %s')
         params.append(done)
     if search is not None:
-        clauses.append('title LIKE ?')
+        clauses.append('title ILIKE %s') # ILIKE: Postgres' case-insensitive LIKE
         params.append(f'%{search}%') # contains "search" in title
 
     if clauses:
@@ -61,37 +62,37 @@ def get_all(done: bool|None = None, search: str|None = None) -> list[Task]:
     return [Task(**dict(row)) for row in rows]
 
 def get_one(id: int) -> Task:
-    row = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
+    row = db.execute('SELECT * FROM tasks WHERE id = %s', (id,)).fetchone()
     return Task(**dict(row)) if row else None
 
 def get_stats() -> dict[str | int]:
-    total = db.execute('SELECT COUNT(*) from tasks').fetchone()[0]
-    done = db.execute('SELECT COUNT(*) from tasks WHERE done = ?', (1,)).fetchone()[0]
+    total = db.execute('SELECT COUNT(*) from tasks').fetchone()['count']
+    done = db.execute('SELECT COUNT(*) from tasks WHERE done = %s', (True,)).fetchone()['count']
     return {'total' : total, 'done' : done, 'open' : total - done}
 
 # --------- DB (write) -----------
 def insert(title: str, done: bool) -> Task:
-    cur = db.execute('INSERT INTO tasks (title, done) VALUES (?, ?)', (title, done))
+    row = db.execute('INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING *', (title, done)).fetchone()
     db.commit()
-    return Task(id=cur.lastrowid, title=title, done=done)
+    return Task(**dict(row))
 
 def update(id: int, title: str|None = None, done: bool|None = None):
     fields, params = [], []
     if title is not None:
-        fields.append('title = ?')
+        fields.append('title = %s')
         params.append(title)
     if done is not None:
-        fields.append('done = ?')
+        fields.append('done = %s')
         params.append(done)
     if not fields:
         return get_one(id)
 
     params.append(id)
-    cur = db.execute(f'UPDATE tasks SET {', '.join(fields)} WHERE id = ?', params)
+    cur = db.execute(f'UPDATE tasks SET {', '.join(fields)} WHERE id = %s', params)
     db.commit()
     return get_one(id) if cur.rowcount else None
 
 def delete(id: int):
-    cur = db.execute('DELETE from tasks WHERE id = ?', (id,))
+    cur = db.execute('DELETE from tasks WHERE id = %s', (id,))
     db.commit()
     return cur.rowcount != 0

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-import sqlite3
+import psycopg
 import tasks
 from tasks import TaskNew, TaskUpdate
 
@@ -28,8 +28,8 @@ def validation_handler(request: Request, exc: RequestValidationError):
         content={"error": f"{field}: {first['msg']}"},
     )
 
-@app.exception_handler(sqlite3.Error)
-def db_handler(request: Request, exc: sqlite3.Error):
+@app.exception_handler(psycopg.Error)
+def db_handler(request: Request, exc: psycopg.Error):
     '''Handler for database errors'''
     return JSONResponse(status_code=500, content={"error": "Database error"})
 

@@ -1,17 +1,20 @@
-''' Initialize the SQLite Database '''
+''' Initialize the Posgres Database '''
 
-import sqlite3
 from pathlib import Path
+import os
+import psycopg
+from psycopg.rows import dict_row
+from dotenv import load_dotenv
 
-DB_PATH = Path(__file__).parent.parent / 'tasks.db'
+load_dotenv(Path(__file__).parent.parent / '.env')
+DATABASE_URL = os.environ['DATABASE_URL']
 
-db = sqlite3.connect(DB_PATH, check_same_thread=False) # one unique connection for all requests (small db)
-db.row_factory = sqlite3.Row # indexable by index and column name
+db = psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 db.execute(
     '''
     CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         done BOOLEAN NOT NULL DEFAULT FALSE
     )
