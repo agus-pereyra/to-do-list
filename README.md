@@ -1,80 +1,85 @@
 # To-Do List CRUD API
 
-A simple To-Do List REST API built with **Python + FastAPI**, backed by a **SQLite** database. It supports creating, reading, updating and deleting tasks, plus filtering, search, computed statistics and a reset endpoint for testing.
+A simple To-Do List REST API built with **Python + FastAPI**, backed by a **PostgreSQL** database running in **Docker**. It supports creating, reading, updating and deleting tasks, plus filtering, search, computed statistics and a reset endpoint for testing.
 
-Tasks are stored in a SQLite database file (`tasks.db`) — **data survives a server restart.**
+The whole stack — the API and its database — starts with a single command. Tasks are stored in Postgres, so **data survives a server restart, a container restart, or the whole stack being torn down and brought back up.**
+
+This is the third storage engine this same repo has used: an in-memory list, then a SQLite file, now a containerized Postgres server. The API on top never changed.
 
 ## Requirements
 
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) (package & project manager)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Podman) — no Python, no `uv`, no Postgres install needed to just run it.
 
-No database server to install: SQLite ships with Python.
+(To run the app outside Docker for local development, see [Running without Docker](#running-without-docker) below — that path does need Python 3.13+ and `uv`.)
 
-## Installation
-
-```powershell
-# clone the repo, then from the project folder:
-uv sync          # creates .venv and installs all dependencies from uv.lock
-```
-
-## Run the server
+## Run everything with one command
 
 ```powershell
-uv run fastapi dev app/main.py
+git clone <this-repo-url>
+cd to-do-list
+cp .env.example .env
+docker compose up
 ```
 
-The API will be available at `http://localhost:8000`.
+That's it — Docker builds the API image, pulls Postgres, starts both, creates the `tasks` table on first boot, and seeds three example tasks. The API is available at `http://localhost:8000`.
 
 - Interactive docs (Swagger UI): http://localhost:8000/docs
 - Alternative docs (ReDoc): http://localhost:8000/redoc
 
-That single command is all a fresh clone needs — the database is created on first run.
+Stop everything with `docker compose down` (add `-v` if you also want to wipe the database volume and start completely fresh).
+
+## Configuration
+
+The app reads its database connection string from a single environment variable, provided via `.env` (git-ignored — never commit real secrets):
+
+| Variable | Meaning | Example |
+|---|---|---|
+| `DATABASE_URL` | Postgres connection string: `postgres://user:password@host:port/dbname` | `postgres://postgres:dev@db:5432/tasks` |
+
+Copy `.env.example` to `.env` to get a working default — the password here (`dev`) is a throwaway local development credential, not a real secret. `.env` is listed in `.gitignore` and is never committed.
+
+Note the host differs depending on how you run things: inside `docker compose`, the API reaches Postgres by the **service name** `db` (Docker Compose's internal DNS); if you run the API directly on your machine against a hand-started container, it's `localhost` instead (see below).
 
 ## Database
 
-### Why SQLite
+### Why Postgres in Docker
 
-- **It's a single file.** The whole database is `tasks.db`. Copy it, delete it, open it in a viewer — no server, no ports, no credentials.
-- **Zero setup.** Python's `sqlite3` module is in the standard library, so there is nothing to install and nothing extra in `pyproject.toml`. A stranger cloning this repo runs one command and gets a working app.
-- **Data survives restarts.** The previous version kept tasks in a Python dictionary, so everything was lost when the process stopped. That was the limitation this version removes.
-- **Right size for the job.** One table, one user, no concurrent writers. PostgreSQL would be the choice for a multi-user service; here it would be pure overhead.
+- **A real database server**, not a file. PostgreSQL runs as its own program, the same engine behind a large share of real backends (FlyRank included) — the right choice once more than one process or user needs to read/write concurrently, unlike the SQLite file used in the previous version of this repo.
+- **No local install.** You never install Postgres on your machine — Docker runs the official `postgres` image, an isolated, throwaway, disposable copy of it.
+- **A volume, not the container, keeps the data.** The named volume `taskdata` is mounted at Postgres's data directory. The container itself can be deleted and recreated at will; the rows live in the volume and survive that.
 
 ### Where the database lives
 
 | | |
 |---|---|
-| File | `tasks.db`, in the project root |
-| Created by | `app/db.py`, automatically on first run |
-| Tracked in git? | No — it's in `.gitignore`, so every clone starts fresh |
-
-The path is resolved relative to the source file, not the working directory, so the server always finds the same database no matter where it was launched from.
+| Engine | PostgreSQL 16, running in the `db` service (pinned to `postgres:16` — `postgres:latest` is now major version 18, which uses an incompatible data-directory layout for this same setup) |
+| Data | Named Docker volume `taskdata`, mounted at `/var/lib/postgresql/data` inside the container |
+| Created by | `app/db.py`, automatically on first connection |
+| Tracked in git? | No — the volume lives in Docker's own storage, not the repo |
 
 ### Schema
 
-One table, created with `CREATE TABLE IF NOT EXISTS` at startup:
+One table, created with `CREATE TABLE IF NOT EXISTS` on startup:
 
 ```sql
 CREATE TABLE tasks (
-    id    INTEGER PRIMARY KEY,      -- assigned by SQLite
+    id    SERIAL PRIMARY KEY,       -- auto-incrementing, assigned by Postgres
     title TEXT NOT NULL,
-    done  BOOLEAN NOT NULL DEFAULT FALSE   -- stored as 0 / 1
+    done  BOOLEAN NOT NULL DEFAULT FALSE
 )
 ```
 
-SQLite has no boolean type — `done` is stored as `0` or `1` and converted back to a real boolean by the Pydantic models.
-
-On first run only, three example tasks are seeded. The check is a row count (`SELECT COUNT(*) FROM tasks`), not a file-existence check, so restarting the server never duplicates them.
+On first run only, three example tasks are seeded. The check is a row count (`SELECT COUNT(*) FROM tasks`), not a file-existence check, so restarting the server (or the whole stack) never duplicates them.
 
 ### Queries
 
-All SQL runs in `app/tasks.py`, and every user-supplied value is passed as a `?` parameter rather than formatted into the query string:
+All SQL runs in `app/tasks.py`, and every user-supplied value is passed as a `%s` **parameterized query** placeholder rather than formatted into the query string:
 
 ```python
-db.execute('SELECT * FROM tasks WHERE id = ?', (id,))
+db.execute('SELECT * FROM tasks WHERE id = %s', (id,))
 ```
 
-The statement is compiled before the value is bound, so input can never be interpreted as SQL.
+The value is bound separately from the query text by the `psycopg` driver, so user input can never be interpreted as SQL.
 
 ## Endpoints
 
@@ -90,35 +95,9 @@ The statement is compiled before the value is bound, so input can never be inter
 | PUT | `/tasks/{id}` | Update `title` and/or `done` | 200 | 400, 404 |
 | DELETE | `/tasks/{id}` | Delete a task | 204 (no body) | 404 |
 
-All errors are returned as JSON with the shape `{"error": "<message>"}`.
+All errors are returned as JSON with the shape `{"error": "<message>"}`. These endpoints, their request/response shapes and status codes are unchanged from the in-memory (A1) and SQLite (A2) versions of this API — only the storage engine underneath changed.
 
 ## Examples
-
-### Get one task
-
-```powershell
-curl.exe -i http://localhost:8000/tasks/1
-```
-
-```
-HTTP/1.1 200 OK
-content-type: application/json
-
-{"title":"Buy Milk","done":false,"id":1}
-```
-
-### Task not found → 404
-
-```powershell
-curl.exe -i http://localhost:8000/tasks/99
-```
-
-```
-HTTP/1.1 404 Not Found
-content-type: application/json
-
-{"error":"Task 99 not found"}
-```
 
 ### Create a task → 201
 
@@ -131,6 +110,19 @@ HTTP/1.1 201 Created
 content-type: application/json
 
 {"title":"Buy milk","done":false,"id":4}
+```
+
+### Task not found → 404
+
+```powershell
+curl.exe -i http://localhost:8000/tasks/999
+```
+
+```
+HTTP/1.1 404 Not Found
+content-type: application/json
+
+{"error":"Task 999 not found"}
 ```
 
 ### Filter and search
@@ -146,30 +138,29 @@ content-type: application/json
 [{"title":"Buy Milk","done":false,"id":1}]
 ```
 
-### Stats
+### Persistence across the whole stack
 
-```powershell
-curl.exe -i http://localhost:8000/stats
-```
-
-```
-HTTP/1.1 200 OK
-content-type: application/json
-
-{"total":3,"done":1,"open":2}
-```
-
-### Persistence
-
-The point of the database, in three commands:
+The point of moving to a containerized database, in three commands:
 
 ```powershell
 curl.exe -X POST http://localhost:8000/tasks -H "Content-Type: application/json" --% -d "{\"title\":\"Survives a restart\"}"
-# stop the server (Ctrl+C), then start it again
+docker compose down
+docker compose up -d
 curl.exe -i http://localhost:8000/tasks
 ```
 
-The task is still there. With the in-memory version it would have been gone.
+The task is still there after the entire stack — API and database — was torn down and started again. That's the volume, not the container, keeping the data alive: `docker compose down` removes the containers, but `taskdata` is untouched. (Only `docker compose down -v` would also delete the volume, and with it, the data.)
+
+## Running without Docker
+
+For local development without containers, you still need a Postgres server reachable somewhere. The simplest option is running just the database in a container and the API directly on your machine:
+
+```powershell
+docker run --name taskdb -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=tasks -p 5432:5432 -v taskdata:/var/lib/postgresql/data -d postgres:16
+
+uv sync                              # creates .venv and installs all dependencies from uv.lock
+uv run fastapi dev app/main.py       # DATABASE_URL in .env should point at localhost:5432 in this mode
+```
 
 ## Swagger UI
 
@@ -177,23 +168,12 @@ FastAPI automatically generates interactive documentation at `/docs`, where ever
 
 ![Swagger UI](docs/swagger.png)
 
-## The database in DB Browser
+## The database in Postgres
 
-`tasks.db` opened in [DB Browser for SQLite](https://sqlitebrowser.org/) — the same three seeded tasks the API serves, as rows in a table:
+Confirming the seeded rows live in Postgres itself, via `psql` inside the `db` container:
 
-![tasks.db in DB Browser](docs/database.png)
-
-### Running SQL by hand
-
-The API and DB Browser read the same file, so a change made in one appears in the other with no restart and no syncing step:
-
-```sql
-INSERT INTO tasks (title, done) VALUES ("Example Task", 0);
-SELECT * FROM tasks WHERE title LIKE "%Example%";
+```powershell
+docker compose exec db psql -U postgres -d tasks -c "SELECT * FROM tasks;"
 ```
 
-![Executing SQL in DB Browser](docs/sql-execute.png)
-
-The `SELECT` returns two rows: the seeded `Task Example Nº3` and the `Example Task` just inserted. `LIKE "%Example%"` matches any title *containing* the word — `%` is SQL's wildcard, and it is the same query `GET /tasks?search=Example` runs.
-
-One catch worth knowing: DB Browser keeps edits in an open transaction until **Write Changes** is clicked. Until then the new row is invisible to the API — and the database is locked against writes. "Write Changes" is the same operation as `db.commit()` in the application code.
+![tasks table in Postgres](docs/postgres-data.png)
