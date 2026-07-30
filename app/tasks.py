@@ -13,7 +13,6 @@ class TaskUpdate(BaseModel):
     title: str | None = None
     done : bool | None = None
 
-
 # --------- DB (init) -----------
 EXAMPLES = [
     ('Buy Milk', False),
