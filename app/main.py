@@ -4,8 +4,19 @@ from fastapi.exceptions import RequestValidationError
 import psycopg
 import tasks
 from tasks import TaskNew, TaskUpdate
+from contextlib import asynccontextmanager
+import auth
+import logging
 
-app = FastAPI()
+log = logging.getLogger('uvicorn')
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info('Server running and connected to Supabase')
+    yield
+    log.info('Server stopping...')
+
+app = FastAPI(lifespan=lifespan)
 
 tasks.seed_if_empty()
 

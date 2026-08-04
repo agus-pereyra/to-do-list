@@ -1,0 +1,7 @@
+.venv
+__pycache__/
+*.py[oc]
+.git
+.env
+docs/
+node_modules/
