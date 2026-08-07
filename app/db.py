@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / '.env')
 DATABASE_URL = os.environ['DATABASE_URL']
 
-db = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+db = psycopg.connect(DATABASE_URL, row_factory=dict_row) #type: ignore
 
 db.execute(
     '''

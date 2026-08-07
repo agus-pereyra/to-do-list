@@ -7,6 +7,7 @@ from tasks import TaskNew, TaskUpdate
 from contextlib import asynccontextmanager
 import auth
 import logging
+from supabase import AuthApiError
 
 log = logging.getLogger('uvicorn')
 
@@ -43,6 +44,47 @@ def validation_handler(request: Request, exc: RequestValidationError):
 def db_handler(request: Request, exc: psycopg.Error):
     '''Handler for database errors'''
     return JSONResponse(status_code=500, content={"error": "Database error"})
+
+@app.exception_handler(AuthApiError)
+def supabase_auth_handler(request: Request, exc: AuthApiError):
+    '''Handler for Supabase Auth error'''
+    return JSONResponse(
+        status_code=exc.status or 401,
+        content={'error': exc.message},
+    )
+
+# ----------- AUTH ---------------
+@app.post('/auth/signup', status_code=201)
+def signup(form: auth.Credentials):
+    email, password = form.email, form.password
+    if email is None and password is None:
+        raise HTTPException(status_code=400, detail=f'Email and password missing')
+    elif email is None:
+        raise HTTPException(status_code=400, detail=f'Email missing')
+    elif password is None:
+        raise HTTPException(status_code=400, detail=f'Password missing')
+
+    return auth.signup(email, password)
+    
+@app.post('/auth/login', status_code=200)
+def login(form: auth.Credentials):
+    email, password = form.email, form.password
+    if email is None and password is None:
+        raise HTTPException(status_code=400, detail=f'Email and password missing')
+    elif email is None:
+        raise HTTPException(status_code=400, detail=f'Email missing')
+    elif password is None:
+        raise HTTPException(status_code=400, detail=f'Password missing')
+    try:
+        session = auth.login(email, password)
+    except AuthApiError:
+        raise HTTPException(status_code=401, detail='Invalid login credentials')
+    if session is None:
+        raise HTTPException(status_code=401, detail='Invalid login credentials')
+    return {
+        'access_token' : session.access_token,
+        'refresh_token' : session.refresh_token
+    }
 
 # ----------- GET --------------
 @app.get('/') # 200: OK (default)
