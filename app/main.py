@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import psycopg
@@ -138,3 +138,19 @@ def modify_task(id: int, form: TaskUpdate): # 200: OK (default)
 def delete_task(id: int):
     if not tasks.delete(id):
         raise HTTPException(status_code=404, detail='Unknown task ID') # 404: Not Found
+
+# ------- PUBLIC --------------
+@app.get('/public/info')
+def public_info():
+    return {"message": "Welcome stranger! This info is public."}
+
+# ------- PROTECTED --------------
+@app.get('/protected/profile')
+def profile(authorization: str|None = Header(default=None)):
+    if authorization is None or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail='Access token required')
+    token = authorization.removeprefix('Bearer ').strip()
+    if not token: 
+        raise HTTPException(status_code=401, detail='Access token required')
+    
+
