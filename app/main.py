@@ -10,7 +10,6 @@ import auth
 from auth import AuthApiError, User
 import logging
 
-
 log = logging.getLogger('uvicorn')
 
 @asynccontextmanager
@@ -100,8 +99,9 @@ def login(form: auth.Credentials):
     }
 
 @app.post('/auth/logout', status_code=204)
-def logout(user = Depends(get_current_user)):
-    auth.logout()
+def logout(cred: HTTPAuthorizationCredentials = Depends(security),
+           user: User = Depends(get_current_user)):
+    auth.logout(cred.credentials)
 
 # ----------- GET --------------
 @app.get('/') # 200: OK (default)

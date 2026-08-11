@@ -35,8 +35,8 @@ def login(email: str, password: str):
     )
     return response.session
 
-def logout():
-    supabase.auth.sign_out()
+def logout(token: str):
+    supabase.auth.admin.sign_out(token)
 
 def verify_token(token: str):
     response = supabase.auth.get_user(token)
