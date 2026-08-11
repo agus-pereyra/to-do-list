@@ -152,5 +152,14 @@ def profile(authorization: str|None = Header(default=None)):
     token = authorization.removeprefix('Bearer ').strip()
     if not token: 
         raise HTTPException(status_code=401, detail='Access token required')
-    
 
+    try:
+        user = auth.verify_token(token)
+        if user is not None:
+            return {
+                'id' : user.id,
+                'email' : user.email,
+                'account created-date' : user.created_at
+            }
+    except AuthApiError:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')

@@ -36,4 +36,7 @@ def login(email: str, password: str):
     )
     return response.session
 
-    
+def verify_token(token: str):
+    response = supabase.auth.get_user(token)
+    if response is not None:
+        return response.user

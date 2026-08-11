@@ -10,3 +10,9 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "supabase>=2.31.0",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+extraPaths = ["app"] # main.py imports "auth"/"tasks" as if app/ were the root
