@@ -2,11 +2,10 @@
 
 import os
 from pathlib import Path
-from supabase import create_client, Client
-from supabase_auth import AuthResponse
+from supabase import create_client, Client, AuthApiError
+from supabase_auth import User
 from dotenv import load_dotenv
 from pydantic import BaseModel
-
 class Credentials(BaseModel):
     email: str | None = None
     password: str | None = None
@@ -35,6 +34,9 @@ def login(email: str, password: str):
         }
     )
     return response.session
+
+def logout():
+    supabase.auth.sign_out()
 
 def verify_token(token: str):
     response = supabase.auth.get_user(token)

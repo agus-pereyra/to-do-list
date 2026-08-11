@@ -1,13 +1,15 @@
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import psycopg
 import tasks
 from tasks import TaskNew, TaskUpdate
 from contextlib import asynccontextmanager
 import auth
+from auth import AuthApiError, User
 import logging
-from supabase import AuthApiError
+
 
 log = logging.getLogger('uvicorn')
 
@@ -18,6 +20,17 @@ async def lifespan(app: FastAPI):
     log.info('Server stopping...')
 
 app = FastAPI(lifespan=lifespan)
+
+# --------- BEARER -------------
+security = HTTPBearer()
+def get_current_user(cred: HTTPAuthorizationCredentials = Depends(security)) -> User:
+    try:
+        user = auth.verify_token(cred.credentials)
+    except AuthApiError:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')
+    if user is None:
+        raise HTTPException(status_code=401, detail='Invalid or expired token')
+    return user
 
 tasks.seed_if_empty()
 
@@ -86,6 +99,10 @@ def login(form: auth.Credentials):
         'refresh_token' : session.refresh_token
     }
 
+@app.post('/auth/logout', status_code=204)
+def logout(user = Depends(get_current_user)):
+    auth.logout()
+
 # ----------- GET --------------
 @app.get('/') # 200: OK (default)
 def get_root():
@@ -146,20 +163,9 @@ def public_info():
 
 # ------- PROTECTED --------------
 @app.get('/protected/profile')
-def profile(authorization: str|None = Header(default=None)):
-    if authorization is None or not authorization.startswith('Bearer '):
-        raise HTTPException(status_code=401, detail='Access token required')
-    token = authorization.removeprefix('Bearer ').strip()
-    if not token: 
-        raise HTTPException(status_code=401, detail='Access token required')
+def profile(user: User = Depends(get_current_user)):
+     return {'id': user.id, 'email': user.email, 'created_at': user.created_at}
 
-    try:
-        user = auth.verify_token(token)
-        if user is not None:
-            return {
-                'id' : user.id,
-                'email' : user.email,
-                'account created-date' : user.created_at
-            }
-    except AuthApiError:
-        raise HTTPException(status_code=401, detail='Invalid or expired token')
+@app.get('/protected/dashboard')
+def dashboard(user: User = Depends(get_current_user)):
+    return {'message': f'Welcome back, {user.email}'}
